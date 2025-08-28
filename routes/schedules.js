@@ -34,10 +34,19 @@ router.get('/by-class/:classId', async (req, res) => {
 
   try {
     const result = await pool.query(`
-      SELECT s.day, s.hour, st.full_name AS student_name, s.subject
-      FROM schedules s
-      JOIN students st ON s.student_id = st.id
-      WHERE st.class_id = $1
+    SELECT 
+  s.id AS schedule_id,
+  s.day,
+  s.hour,
+  s.subject,
+  s.student_id,
+  s.teacher_id,
+  st.full_name AS student_name,
+  t.full_name AS teacher_name
+FROM schedules s
+JOIN students st ON s.student_id = st.id
+LEFT JOIN teachers t ON s.teacher_id = t.id
+WHERE st.class_id = $1
     `, [classId]);
 
     res.json(result.rows);
@@ -54,10 +63,15 @@ router.get('/by-teacher/:teacherId', async (req, res) => {
   try {
     const result = await pool.query(
       `SELECT 
-         s.day, s.hour, s.subject, st.full_name AS student_name
-       FROM schedules s
-       JOIN students st ON s.student_id = st.id
-       WHERE s.teacher_id = $1`,
+  s.id AS schedule_id,
+  s.day,
+  s.hour,
+  s.subject,
+  s.student_id,
+  st.full_name AS student_name
+FROM schedules s
+JOIN students st ON s.student_id = st.id
+WHERE s.teacher_id = $1`,
       [teacherId]
     );
 
@@ -114,5 +128,41 @@ router.delete('/:id', async (req, res) => {
     res.status(500).send('Server error');
   }
 });
+
+// שליפת מורות תפוסות ליום ושעה
+router.get('/occupied-teachers', async (req, res) => {
+  const { day, hour } = req.query;
+
+  try {
+    const result = await pool.query(
+      `SELECT teacher_id 
+       FROM schedules 
+       WHERE day = $1 AND hour = $2`,
+      [day, hour]
+    );
+
+    // נחזיר מערך של IDs
+    res.json(result.rows.map(r => r.teacher_id));
+  } catch (err) {
+    console.error('שגיאה בשליפת מורות תפוסות:', err.message);
+    res.status(500).send('Server error');
+  }
+});
+
+// GET occupied students by day/hour
+router.get('/occupied-students', async (req, res) => {
+  const { day, hour } = req.query;
+  try {
+    const result = await pool.query(
+      `SELECT student_id FROM schedules WHERE day = $1 AND hour = $2`,
+      [day, hour]
+    );
+    res.json(result.rows.map(r => r.student_id));
+  } catch (err) {
+    console.error('שגיאה בשליפת תלמידות תפוסות:', err.message);
+    res.status(500).send('Server error');
+  }
+});
+
 
 module.exports = router;

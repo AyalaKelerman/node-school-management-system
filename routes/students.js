@@ -7,7 +7,12 @@ const pool = require('../db');
 // GET all students
 router.get('/', async (req, res) => {
   try {
-    const result = await pool.query('SELECT * FROM students ORDER BY id');
+    const result = await pool.query(`
+      SELECT st.*, c.name AS class_name
+      FROM students st
+      LEFT JOIN classes c ON st.class_id = c.id
+      ORDER BY st.id
+    `);
     res.json(result.rows);
   } catch (err) {
     console.error('שגיאה בשליפת כל התלמידות:', err.message);
@@ -33,9 +38,10 @@ router.get('/by-teacher/:teacherId', async (req, res) => {
   const { teacherId } = req.params;
   try {
     const result = await pool.query(`
-      SELECT DISTINCT st.*
+      SELECT DISTINCT st.*, c.name AS class_name
       FROM students st
       JOIN schedules sch ON st.id = sch.student_id
+      LEFT JOIN classes c ON st.class_id = c.id
       WHERE sch.teacher_id = $1
       ORDER BY st.full_name
     `, [teacherId]);
