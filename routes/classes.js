@@ -1,82 +1,110 @@
 const express = require('express');
 const router = express.Router();
-const pool = require('../db');
+const supabase = require('../supabaseClient');
 
 // GET all classes
 router.get('/', async (req, res) => {
-  const result = await pool.query('SELECT * FROM classes ORDER BY id');
-  res.json(result.rows);
+  const { data, error } = await supabase.from('classes').select('*').order('id');
+  if (error) return res.status(500).json({ error: error.message });
+  res.json(data);
 });
 
 // POST create class
 router.post('/', async (req, res) => {
   const { name, gradeName, teacherName } = req.body;
-
   try {
-    // חיפוש האם המחזור כבר קיים
-    let grade = await pool.query('SELECT * FROM grades WHERE name = $1', [gradeName]);
+    // בדיקה אם המחזור קיים
+    const { data: gradeData, error: gradeSelectError } = await supabase
+      .from('grades')
+      .select('*')
+      .eq('name', gradeName)
+      .single();
 
-    let gradeId;
-    if (grade.rowCount === 0) {
-      // אם לא קיים - מוסיפים מחזור חדש
-      const inserted = await pool.query(
-        'INSERT INTO grades (name) VALUES ($1) RETURNING id',
-        [gradeName]
-      );
-      gradeId = inserted.rows[0].id;
-    } else {
-      gradeId = grade.rows[0].id;
+    if (gradeSelectError && gradeSelectError.code !== 'PGRST116') { // 'PGRST116' = no rows
+      throw gradeSelectError;
     }
 
-    // הוספת הכיתה עם grade_id ו־teacher_name
-    const newClass = await pool.query(
-      'INSERT INTO classes (name, grade_id, teacher_name) VALUES ($1, $2, $3) RETURNING *',
-      [name, gradeId, teacherName]
-    );
+    let gradeId;
+    if (!gradeData) {
+      // יצירת מחזור חדש אם לא קיים
+      const { data: newGrade, error: gradeInsertError } = await supabase
+        .from('grades')
+        .insert({ name: gradeName })
+        .select()
+        .single();
 
-    res.status(201).json(newClass.rows[0]);
+      if (gradeInsertError || !newGrade) throw new Error('Failed to create grade');
+
+      gradeId = newGrade.id;
+    } else {
+      gradeId = gradeData.id;
+    }
+
+    // יצירת כיתה
+    const { data: newClass, error: classError } = await supabase
+      .from('classes')
+      .insert({ name, grade_id: gradeId, teacher_name: teacherName })
+      .select()
+      .single();
+
+    if (classError || !newClass) throw new Error('Failed to create class');
+
+    res.status(201).json(newClass);
   } catch (err) {
-    console.error('שגיאה בהוספת כיתה:', err);
-    res.status(500).send('שגיאה בשרת');
+    console.error('Error creating class:', err);
+    res.status(500).send('Server error');
   }
 });
 
-// POST - הוספת כיתות מרובות
+// POST bulk classes
 router.post('/bulk', async (req, res) => {
   const classes = req.body;
+  const insertedClasses = [];
 
   try {
-    const insertedClasses = [];
-
     for (const cls of classes) {
       const { name, gradeName, teacherName } = cls;
 
-      // בדיקה אם המחזור קיים
-      let grade = await pool.query('SELECT * FROM grades WHERE name = $1', [gradeName]);
-      let gradeId;
+      const { data: gradeData, error: gradeSelectError } = await supabase
+        .from('grades')
+        .select('*')
+        .eq('name', gradeName)
+        .single();
 
-      if (grade.rowCount === 0) {
-        const newGrade = await pool.query(
-          'INSERT INTO grades (name) VALUES ($1) RETURNING id',
-          [gradeName]
-        );
-        gradeId = newGrade.rows[0].id;
-      } else {
-        gradeId = grade.rows[0].id;
+      if (gradeSelectError && gradeSelectError.code !== 'PGRST116') {
+        throw gradeSelectError;
       }
 
-      const newClass = await pool.query(
-        'INSERT INTO classes (name, grade_id, teacher_name) VALUES ($1, $2, $3) RETURNING *',
-        [name, gradeId, teacherName]
-      );
+      let gradeId;
+      if (!gradeData) {
+        const { data: newGrade, error: gradeInsertError } = await supabase
+          .from('grades')
+          .insert({ name: gradeName })
+          .select()
+          .single();
 
-      insertedClasses.push(newClass.rows[0]);
+        if (gradeInsertError || !newGrade) throw new Error(`Failed to create grade: ${gradeName}`);
+
+        gradeId = newGrade.id;
+      } else {
+        gradeId = gradeData.id;
+      }
+
+      const { data: newClass, error: classError } = await supabase
+        .from('classes')
+        .insert({ name, grade_id: gradeId, teacher_name: teacherName })
+        .select()
+        .single();
+
+      if (classError || !newClass) throw new Error(`Failed to create class: ${name}`);
+
+      insertedClasses.push(newClass);
     }
 
     res.status(201).json(insertedClasses);
   } catch (err) {
-    console.error('שגיאה בהוספת כיתות מרובות:', err);
-    res.status(500).send('שגיאה בשרת');
+    console.error('Error bulk creating classes:', err);
+    res.status(500).send('Server error');
   }
 });
 
@@ -84,14 +112,17 @@ router.post('/bulk', async (req, res) => {
 router.put('/:id', async (req, res) => {
   const { id } = req.params;
   const { name } = req.body;
-  const result = await pool.query('UPDATE classes SET name = $1 WHERE id = $2 RETURNING *', [name, id]);
-  res.json(result.rows[0]);
+
+  const { data, error } = await supabase.from('classes').update({ name }).eq('id', id).select().single();
+  if (error || !data) return res.status(500).json({ error: error?.message || 'Failed to update class' });
+  res.json(data);
 });
 
 // DELETE class
 router.delete('/:id', async (req, res) => {
   const { id } = req.params;
-  await pool.query('DELETE FROM classes WHERE id = $1', [id]);
+  const { error } = await supabase.from('classes').delete().eq('id', id);
+  if (error) return res.status(500).json({ error: error.message });
   res.json({ message: 'Class deleted' });
 });
 

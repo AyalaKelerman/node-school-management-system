@@ -1,98 +1,85 @@
 const express = require('express');
 const router = express.Router();
-const pool = require('../db');
+const supabase = require('../supabaseClient');
 
-// GET schedules, אם יש student_id מסנן לפיו, אחרת מחזיר את הכל
+// GET schedules, עם אפשרות לסינון לפי student_id
 router.get('/', async (req, res) => {
   const { student_id } = req.query;
-
-  let query = `
-    SELECT schedules.*, teachers.full_name as teacher_name
-    FROM schedules
-    LEFT JOIN teachers ON schedules.teacher_id = teachers.id
-  `;
-  const params = [];
-
-  if (student_id) {
-    query += ' WHERE student_id = $1';
-    params.push(student_id);
-  }
-
   try {
-    const result = await pool.query(query, params);
-    res.json(result.rows);
+    let query = supabase.from('schedules').select('*, teacher:teachers(full_name)');
+    if (student_id) query = query.eq('student_id', student_id);
+
+    const { data, error } = await query.order('id');
+    if (error) throw error;
+    res.json(data);
   } catch (err) {
     console.error('שגיאה בשליפת מערכת:', err.message);
     res.status(500).send('Server error');
   }
 });
 
-
-// שליפת כל תלמידות שיש להן שעת שילוב, לפי class_id
+// GET schedules לפי class_id
 router.get('/by-class/:classId', async (req, res) => {
   const { classId } = req.params;
-
   try {
-    const result = await pool.query(`
-    SELECT 
-  s.id AS schedule_id,
-  s.day,
-  s.hour,
-  s.subject,
-  s.student_id,
-  s.teacher_id,
-  st.full_name AS student_name,
-  t.full_name AS teacher_name
-FROM schedules s
-JOIN students st ON s.student_id = st.id
-LEFT JOIN teachers t ON s.teacher_id = t.id
-WHERE st.class_id = $1
-    `, [classId]);
+    const { data, error } = await supabase
+      .from('schedules')
+      .select(`
+        id AS schedule_id,
+        day,
+        hour,
+        subject,
+        student_id,
+        teacher_id,
+        student:students(full_name, class_id),
+        teacher:teachers(full_name)
+      `)
+      .eq('student.class_id', classId);
 
-    res.json(result.rows);
+    if (error) throw error;
+    res.json(data);
   } catch (err) {
-    console.error('שגיאה בשליפת מערכת שעות:', err);
-    res.status(500).send('שגיאה בשרת');
+    console.error('שגיאה בשליפת מערכת שעות:', err.message);
+    res.status(500).send('Server error');
   }
 });
 
-// שליפת מערכת שעות לפי teacher_id (עם נושא ושם תלמידה)
+// GET schedules לפי teacher_id
 router.get('/by-teacher/:teacherId', async (req, res) => {
   const { teacherId } = req.params;
-
   try {
-    const result = await pool.query(
-      `SELECT 
-  s.id AS schedule_id,
-  s.day,
-  s.hour,
-  s.subject,
-  s.student_id,
-  st.full_name AS student_name
-FROM schedules s
-JOIN students st ON s.student_id = st.id
-WHERE s.teacher_id = $1`,
-      [teacherId]
-    );
+    const { data, error } = await supabase
+      .from('schedules')
+      .select(`
+        id AS schedule_id,
+        day,
+        hour,
+        subject,
+        student_id,
+        student:students(full_name)
+      `)
+      .eq('teacher_id', teacherId);
 
-    res.json(result.rows);
+    if (error) throw error;
+    res.json(data);
   } catch (err) {
-    console.error('שגיאה בשליפת מערכת מורה:', err);
-    res.status(500).send('שגיאה בשרת');
+    console.error('שגיאה בשליפת מערכת מורה:', err.message);
+    res.status(500).send('Server error');
   }
 });
-
 
 // POST create schedule entry
 router.post('/', async (req, res) => {
   const { day, hour, student_id, subject, teacher_id } = req.body;
   try {
-    const result = await pool.query(
-      `INSERT INTO schedules (day, hour, student_id, subject, teacher_id)
-       VALUES ($1, $2, $3, $4, $5) RETURNING *`,
-      [day, hour, student_id, subject, teacher_id]
-    );
-    res.status(201).json(result.rows[0]);
+    const { data, error } = await supabase
+      .from('schedules')
+      .insert([{ day, hour, student_id, subject, teacher_id }])
+      .select()
+      .single();
+
+    if (error) throw error;
+    res.status(201).json(data);
   } catch (err) {
     console.error(err.message);
     res.status(500).send('Server error');
@@ -104,13 +91,15 @@ router.put('/:id', async (req, res) => {
   const { id } = req.params;
   const { day, hour, student_id, subject, teacher_id } = req.body;
   try {
-    const result = await pool.query(
-      `UPDATE schedules
-       SET day=$1, hour=$2, student_id=$3, subject=$4, teacher_id=$5
-       WHERE id=$6 RETURNING *`,
-      [day, hour, student_id, subject, teacher_id, id]
-    );
-    res.json(result.rows[0]);
+    const { data, error } = await supabase
+      .from('schedules')
+      .update({ day, hour, student_id, subject, teacher_id })
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (error) throw error;
+    res.json(data);
   } catch (err) {
     console.error(err.message);
     res.status(500).send('Server error');
@@ -121,7 +110,8 @@ router.put('/:id', async (req, res) => {
 router.delete('/:id', async (req, res) => {
   const { id } = req.params;
   try {
-    await pool.query('DELETE FROM schedules WHERE id = $1', [id]);
+    const { error } = await supabase.from('schedules').delete().eq('id', id);
+    if (error) throw error;
     res.json({ message: 'Schedule entry deleted' });
   } catch (err) {
     console.error(err.message);
@@ -129,40 +119,40 @@ router.delete('/:id', async (req, res) => {
   }
 });
 
-// שליפת מורות תפוסות ליום ושעה
+// GET occupied teachers לפי day/hour
 router.get('/occupied-teachers', async (req, res) => {
   const { day, hour } = req.query;
-
   try {
-    const result = await pool.query(
-      `SELECT teacher_id 
-       FROM schedules 
-       WHERE day = $1 AND hour = $2`,
-      [day, hour]
-    );
+    const { data, error } = await supabase
+      .from('schedules')
+      .select('teacher_id')
+      .eq('day', day)
+      .eq('hour', hour);
 
-    // נחזיר מערך של IDs
-    res.json(result.rows.map(r => r.teacher_id));
+    if (error) throw error;
+    res.json(data.map(r => r.teacher_id));
   } catch (err) {
     console.error('שגיאה בשליפת מורות תפוסות:', err.message);
     res.status(500).send('Server error');
   }
 });
 
-// GET occupied students by day/hour
+// GET occupied students לפי day/hour
 router.get('/occupied-students', async (req, res) => {
   const { day, hour } = req.query;
   try {
-    const result = await pool.query(
-      `SELECT student_id FROM schedules WHERE day = $1 AND hour = $2`,
-      [day, hour]
-    );
-    res.json(result.rows.map(r => r.student_id));
+    const { data, error } = await supabase
+      .from('schedules')
+      .select('student_id')
+      .eq('day', day)
+      .eq('hour', hour);
+
+    if (error) throw error;
+    res.json(data.map(r => r.student_id));
   } catch (err) {
     console.error('שגיאה בשליפת תלמידות תפוסות:', err.message);
     res.status(500).send('Server error');
   }
 });
-
 
 module.exports = router;
