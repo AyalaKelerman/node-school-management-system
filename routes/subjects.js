@@ -1,14 +1,19 @@
 const express = require('express');
 const router = express.Router();
-const pool = require('../db');
+const supabase = require('../supabaseClient');
 
 // שליפת כל המקצועות
 router.get('/', async (req, res) => {
   try {
-    const result = await pool.query('SELECT * FROM subjects ORDER BY name');
-    res.json(result.rows);
+    const { data, error } = await supabase
+      .from('subjects')
+      .select('*')
+      .order('name');
+
+    if (error) throw error;
+    res.json(data);
   } catch (err) {
-    console.error('שגיאה בשליפת מקצועות:', err);
+    console.error('שגיאה בשליפת מקצועות:', err.message);
     res.status(500).send('שגיאה בשרת');
   }
 });
@@ -17,33 +22,33 @@ router.get('/', async (req, res) => {
 router.post('/', async (req, res) => {
   const { name } = req.body;
   try {
-    const result = await pool.query(
-      'INSERT INTO subjects (name) VALUES ($1) RETURNING *',
-      [name]
-    );
-    res.status(201).json(result.rows[0]);
+    const { data, error } = await supabase
+      .from('subjects')
+      .insert([{ name }])
+      .select()
+      .single();
+
+    if (error) throw error;
+    res.status(201).json(data);
   } catch (err) {
-    console.error('שגיאה בהוספת מקצוע:', err);
+    console.error('שגיאה בהוספת מקצוע:', err.message);
     res.status(500).send('שגיאה בשרת');
   }
 });
 
+// הוספת מספר מקצועות בבת אחת
 router.post('/bulk', async (req, res) => {
   const subjects = req.body.filter(s => s.name && s.name.trim() !== '');
-
   try {
-    const inserted = [];
-    for (const subject of subjects) {
-      const result = await pool.query(
-        'INSERT INTO subjects (name) VALUES ($1) RETURNING *',
-        [subject.name]
-      );
-      inserted.push(result.rows[0]);
-    }
+    const { data, error } = await supabase
+      .from('subjects')
+      .insert(subjects)
+      .select();
 
-    res.status(201).json(inserted);
+    if (error) throw error;
+    res.status(201).json(data);
   } catch (err) {
-    console.error('שגיאה בהוספת מקצועות:', err);
+    console.error('שגיאה בהוספת מקצועות:', err.message);
     res.status(500).send('שגיאה בשרת');
   }
 });
@@ -53,13 +58,17 @@ router.put('/:id', async (req, res) => {
   const { id } = req.params;
   const { name } = req.body;
   try {
-    const result = await pool.query(
-      'UPDATE subjects SET name = $1 WHERE id = $2 RETURNING *',
-      [name, id]
-    );
-    res.json(result.rows[0]);
+    const { data, error } = await supabase
+      .from('subjects')
+      .update({ name })
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (error) throw error;
+    res.json(data);
   } catch (err) {
-    console.error('שגיאה בעדכון מקצוע:', err);
+    console.error('שגיאה בעדכון מקצוע:', err.message);
     res.status(500).send('שגיאה בשרת');
   }
 });
@@ -68,10 +77,15 @@ router.put('/:id', async (req, res) => {
 router.delete('/:id', async (req, res) => {
   const { id } = req.params;
   try {
-    await pool.query('DELETE FROM subjects WHERE id = $1', [id]);
+    const { error } = await supabase
+      .from('subjects')
+      .delete()
+      .eq('id', id);
+
+    if (error) throw error;
     res.json({ message: 'מקצוע נמחק' });
   } catch (err) {
-    console.error('שגיאה במחיקת מקצוע:', err);
+    console.error('שגיאה במחיקת מקצוע:', err.message);
     res.status(500).send('שגיאה בשרת');
   }
 });
