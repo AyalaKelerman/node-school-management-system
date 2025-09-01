@@ -4,14 +4,22 @@ const cors = require('cors');
 const jwt = require('jsonwebtoken');
 require('dotenv').config();
 
-app.use(cors({
-  origin: ["http://localhost:5173", "https://node-school-management-system-khou.onrender.com"],
+// הגדרת CORS
+const corsOptions = {
+  origin: [
+    "http://localhost:5173", 
+    "https://school-management-system-eim9.vercel.app/" // 👈 החליפי לדומיין האמיתי מה-Vercel
+  ],
   methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization"]
-}));
+  allowedHeaders: ["Content-Type", "Authorization"],
+  credentials: true
+};
+
+app.use(cors(corsOptions));
+app.options('*', cors(corsOptions)); // טיפול בבקשות preflight
 app.use(express.json());
 
-const SECRET_KEY = process.env.JWT_SECRET || "secret123"; // מפתח סודי לשינוי!
+const SECRET_KEY = process.env.JWT_SECRET || "secret123"; 
 
 // Middleware לבדוק טוקן
 function authenticateToken(req, res, next) {
@@ -30,7 +38,6 @@ function authenticateToken(req, res, next) {
 app.post('/login', (req, res) => {
   const { username, password } = req.body;
 
-  // משתמש יחיד פשוט (את יכולה להוציא ל־.env)
   if (username === 'client' && password === 'password123') {
     const token = jwt.sign({ username }, SECRET_KEY, { expiresIn: '1h' });
     return res.json({ token });
