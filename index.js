@@ -4,7 +4,11 @@ const cors = require('cors');
 const jwt = require('jsonwebtoken');
 require('dotenv').config();
 
-app.use(cors());
+app.use(cors({
+  origin: ["http://localhost:5173", "https://node-school-management-system-khou.onrender.com"],
+  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization"]
+}));
 app.use(express.json());
 
 const SECRET_KEY = process.env.JWT_SECRET || "secret123"; // מפתח סודי לשינוי!
