@@ -18,16 +18,7 @@ router.get('/', async (req, res) => {
   }
 });
 
-// GET student by ID
-router.get('/:id', async (req, res) => {
-  const { id } = req.params;
-  const { data, error } = await supabase.from('students').select('*').eq('id', id).single();
-  if (error) return res.status(500).json({ error: error.message });
-  if (!data) return res.status(404).send('Student not found');
-  res.json(data);
-});
-
-// GET students by class ID
+// GET students by class ID (קודם - כדי לא ליפול על /:id)
 router.get('/by-class/:classId', async (req, res) => {
   const { classId } = req.params;
   const { data, error } = await supabase
@@ -37,6 +28,15 @@ router.get('/by-class/:classId', async (req, res) => {
     .order('full_name');
 
   if (error) return res.status(500).json({ error: error.message });
+  res.json(data);
+});
+
+// GET student by ID (אחרי by-class)
+router.get('/:id', async (req, res) => {
+  const { id } = req.params;
+  const { data, error } = await supabase.from('students').select('*').eq('id', id).single();
+  if (error) return res.status(500).json({ error: error.message });
+  if (!data) return res.status(404).send('Student not found');
   res.json(data);
 });
 
