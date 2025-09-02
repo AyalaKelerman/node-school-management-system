@@ -25,7 +25,7 @@ router.get('/by-class/:classId', async (req, res) => {
     const { data, error } = await supabase
       .from('schedules')
       .select(`
-        id AS schedule_id,
+        id,
         day,
         hour,
         subject,
@@ -51,7 +51,7 @@ router.get('/by-teacher/:teacherId', async (req, res) => {
     const { data, error } = await supabase
       .from('schedules')
       .select(`
-        id AS schedule_id,
+        id,
         day,
         hour,
         subject,
@@ -72,6 +72,10 @@ router.get('/by-teacher/:teacherId', async (req, res) => {
 router.post('/', async (req, res) => {
   const { day, hour, student_id, subject, teacher_id } = req.body;
   try {
+    if (!day || !hour || !student_id || !teacher_id) {
+      return res.status(400).send('Missing required fields');
+    }
+
     const { data, error } = await supabase
       .from('schedules')
       .insert([{ day, hour, student_id, subject, teacher_id }])

@@ -4,11 +4,13 @@ const cors = require('cors');
 const jwt = require('jsonwebtoken');
 require('dotenv').config();
 
+// ========================
 // הגדרת CORS
+// ========================
 const corsOptions = {
   origin: [
     "http://localhost:5173", 
-    "https://school-management-system-eim9.vercel.app/" // 👈 החליפי לדומיין האמיתי מה-Vercel
+    "https://school-management-system-eim9.vercel.app"
   ],
   methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
   allowedHeaders: ["Content-Type", "Authorization"],
@@ -19,9 +21,14 @@ app.use(cors(corsOptions));
 app.options('*', cors(corsOptions)); // טיפול בבקשות preflight
 app.use(express.json());
 
-const SECRET_KEY = process.env.JWT_SECRET || "secret123"; 
+// ========================
+// JWT Secret
+// ========================
+const SECRET_KEY = process.env.JWT_SECRET || "secret123";
 
+// ========================
 // Middleware לבדוק טוקן
+// ========================
 function authenticateToken(req, res, next) {
   const authHeader = req.headers['authorization'];
   const token = authHeader && authHeader.split(' ')[1];
@@ -34,7 +41,9 @@ function authenticateToken(req, res, next) {
   });
 }
 
-// מסלול התחברות
+// ========================
+// Route התחברות
+// ========================
 app.post('/login', (req, res) => {
   const { username, password } = req.body;
 
@@ -46,7 +55,9 @@ app.post('/login', (req, res) => {
   res.status(401).json({ message: 'Invalid credentials' });
 });
 
-// routers
+// ========================
+// Routers
+// ========================
 const studentsRouter = require('./routes/students');
 const classesRouter = require('./routes/classes');
 const teachersRouter = require('./routes/teachers');
@@ -56,7 +67,9 @@ const gradesRouter = require('./routes/grades');
 const rolesRouter = require('./routes/roles');
 const subjectsRouter = require('./routes/subjects');
 
-// routes עם הגנה
+// ========================
+// Routes עם הגנה
+// ========================
 app.use('/students', authenticateToken, studentsRouter);
 app.use('/classes', authenticateToken, classesRouter);
 app.use('/teachers', authenticateToken, teachersRouter);
@@ -66,6 +79,8 @@ app.use('/grades', authenticateToken, gradesRouter);
 app.use('/roles', authenticateToken, rolesRouter);
 app.use('/subjects', authenticateToken, subjectsRouter);
 
-// start
+// ========================
+// Start server
+// ========================
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));

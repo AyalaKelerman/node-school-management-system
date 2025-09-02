@@ -2,45 +2,58 @@ const express = require('express');
 const router = express.Router();
 const supabase = require('../supabaseClient');
 
+// פונקציה פנימית לוודא שהמחזור קיים או ליצור אותו
+async function ensureGrade(gradeName) {
+  if (!gradeName) throw new Error('gradeName is required');
+
+  const { data: gradeData, error: gradeSelectError } = await supabase
+    .from('grades')
+    .select('*')
+    .eq('name', gradeName)
+    .single();
+
+  if (gradeSelectError && gradeSelectError.code !== 'PGRST116') {
+    throw gradeSelectError;
+  }
+
+  if (!gradeData) {
+    const { data: newGrade, error: gradeInsertError } = await supabase
+      .from('grades')
+      .insert({ name: gradeName })
+      .select()
+      .single();
+
+    if (gradeInsertError || !newGrade) {
+      throw new Error(`Failed to create grade: ${gradeName}`);
+    }
+    return newGrade.id;
+  }
+
+  return gradeData.id;
+}
+
 // GET all classes
 router.get('/', async (req, res) => {
-  const { data, error } = await supabase.from('classes').select('*').order('id');
-  if (error) return res.status(500).json({ error: error.message });
-  res.json(data);
+  try {
+    const { data, error } = await supabase.from('classes').select('*').order('id');
+    if (error) throw error;
+    res.json(data);
+  } catch (err) {
+    console.error('Error fetching classes:', err.message);
+    res.status(500).json({ error: err.message });
+  }
 });
 
-// POST create class
+// POST create single class
 router.post('/', async (req, res) => {
   const { name, gradeName, teacherName } = req.body;
   try {
-    // בדיקה אם המחזור קיים
-    const { data: gradeData, error: gradeSelectError } = await supabase
-      .from('grades')
-      .select('*')
-      .eq('name', gradeName)
-      .single();
-
-    if (gradeSelectError && gradeSelectError.code !== 'PGRST116') { // 'PGRST116' = no rows
-      throw gradeSelectError;
+    if (!name || !gradeName) {
+      return res.status(400).json({ error: 'Missing required fields: name, gradeName' });
     }
 
-    let gradeId;
-    if (!gradeData) {
-      // יצירת מחזור חדש אם לא קיים
-      const { data: newGrade, error: gradeInsertError } = await supabase
-        .from('grades')
-        .insert({ name: gradeName })
-        .select()
-        .single();
+    const gradeId = await ensureGrade(gradeName);
 
-      if (gradeInsertError || !newGrade) throw new Error('Failed to create grade');
-
-      gradeId = newGrade.id;
-    } else {
-      gradeId = gradeData.id;
-    }
-
-    // יצירת כיתה
     const { data: newClass, error: classError } = await supabase
       .from('classes')
       .insert({ name, grade_id: gradeId, teacher_name: teacherName })
@@ -51,8 +64,8 @@ router.post('/', async (req, res) => {
 
     res.status(201).json(newClass);
   } catch (err) {
-    console.error('Error creating class:', err);
-    res.status(500).send('Server error');
+    console.error('Error creating class:', err.message);
+    res.status(500).json({ error: err.message });
   }
 });
 
@@ -64,31 +77,9 @@ router.post('/bulk', async (req, res) => {
   try {
     for (const cls of classes) {
       const { name, gradeName, teacherName } = cls;
+      if (!name || !gradeName) throw new Error('Missing required fields in bulk insert');
 
-      const { data: gradeData, error: gradeSelectError } = await supabase
-        .from('grades')
-        .select('*')
-        .eq('name', gradeName)
-        .single();
-
-      if (gradeSelectError && gradeSelectError.code !== 'PGRST116') {
-        throw gradeSelectError;
-      }
-
-      let gradeId;
-      if (!gradeData) {
-        const { data: newGrade, error: gradeInsertError } = await supabase
-          .from('grades')
-          .insert({ name: gradeName })
-          .select()
-          .single();
-
-        if (gradeInsertError || !newGrade) throw new Error(`Failed to create grade: ${gradeName}`);
-
-        gradeId = newGrade.id;
-      } else {
-        gradeId = gradeData.id;
-      }
+      const gradeId = await ensureGrade(gradeName);
 
       const { data: newClass, error: classError } = await supabase
         .from('classes')
@@ -103,27 +94,52 @@ router.post('/bulk', async (req, res) => {
 
     res.status(201).json(insertedClasses);
   } catch (err) {
-    console.error('Error bulk creating classes:', err);
-    res.status(500).send('Server error');
+    console.error('Error bulk creating classes:', err.message);
+    res.status(500).json({ error: err.message });
   }
 });
 
 // PUT update class
 router.put('/:id', async (req, res) => {
   const { id } = req.params;
-  const { name } = req.body;
+  const { name, teacherName } = req.body;
 
-  const { data, error } = await supabase.from('classes').update({ name }).eq('id', id).select().single();
-  if (error || !data) return res.status(500).json({ error: error?.message || 'Failed to update class' });
-  res.json(data);
+  try {
+    if (!name && !teacherName) {
+      return res.status(400).json({ error: 'Nothing to update' });
+    }
+
+    const updateFields = {};
+    if (name) updateFields.name = name;
+    if (teacherName) updateFields.teacher_name = teacherName;
+
+    const { data, error } = await supabase
+      .from('classes')
+      .update(updateFields)
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (error || !data) throw error || new Error('Class not found');
+
+    res.json(data);
+  } catch (err) {
+    console.error('Error updating class:', err.message);
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // DELETE class
 router.delete('/:id', async (req, res) => {
   const { id } = req.params;
-  const { error } = await supabase.from('classes').delete().eq('id', id);
-  if (error) return res.status(500).json({ error: error.message });
-  res.json({ message: 'Class deleted' });
+  try {
+    const { error } = await supabase.from('classes').delete().eq('id', id);
+    if (error) throw error;
+    res.json({ message: 'Class deleted' });
+  } catch (err) {
+    console.error('Error deleting class:', err.message);
+    res.status(500).json({ error: err.message });
+  }
 });
 
 module.exports = router;
