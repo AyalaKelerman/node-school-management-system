@@ -5,13 +5,24 @@ const jwt = require('jsonwebtoken');
 require('dotenv').config();
 
 // ========================
-// הגדרת CORS
+// הגדרת CORS דינמית
 // ========================
+const allowedOrigins = [
+  "http://localhost:5173",
+  "https://school-management-system-eim9.vercel.app",
+  "https://node-school-management-system-khou.onrender.com"
+];
+
 const corsOptions = {
-  origin: [
-    "http://localhost:5173", 
-    "https://school-management-system-eim9.vercel.app"
-  ],
+  origin: function (origin, callback) {
+    // אם אין origin (למשל request מ־Postman) מאשרים
+    if (!origin) return callback(null, true);
+    if (allowedOrigins.indexOf(origin) !== -1) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
   methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
   allowedHeaders: ["Content-Type", "Authorization"],
   credentials: true
@@ -20,20 +31,6 @@ const corsOptions = {
 app.use(cors(corsOptions));
 app.options('*', cors(corsOptions)); // טיפול בבקשות preflight
 app.use(express.json());
-
-// ========================
-// טיפול ידני ב-CORS לכל מקרה
-// ========================
-app.use((req, res, next) => {
-  res.header("Access-Control-Allow-Origin", "*"); // לניסיון ראשון - לפתוח לגמרי
-  res.header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
-  res.header("Access-Control-Allow-Headers", "Content-Type, Authorization");
-  
-  if (req.method === "OPTIONS") {
-    return res.sendStatus(200); // להחזיר תשובה תקינה ל-preflight
-  }
-  next();
-});
 
 // ========================
 // JWT Secret
