@@ -22,6 +22,20 @@ app.options('*', cors(corsOptions)); // טיפול בבקשות preflight
 app.use(express.json());
 
 // ========================
+// טיפול ידני ב-CORS לכל מקרה
+// ========================
+app.use((req, res, next) => {
+  res.header("Access-Control-Allow-Origin", "*"); // לניסיון ראשון - לפתוח לגמרי
+  res.header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
+  res.header("Access-Control-Allow-Headers", "Content-Type, Authorization");
+  
+  if (req.method === "OPTIONS") {
+    return res.sendStatus(200); // להחזיר תשובה תקינה ל-preflight
+  }
+  next();
+});
+
+// ========================
 // JWT Secret
 // ========================
 const SECRET_KEY = process.env.JWT_SECRET || "secret123";
