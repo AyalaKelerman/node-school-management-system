@@ -18,6 +18,37 @@ router.get('/', async (req, res) => {
   }
 });
 
+// GET students by teacher ID
+router.get('/by-teacher/:teacherId', async (req, res) => {
+  const { teacherId } = req.params;
+
+  try {
+    const { data, error } = await supabase
+      .from('students')
+      .select(`
+        *,
+        class:classes(name),
+        schedules!inner(teacher_id)
+      `)
+      .eq('schedules.teacher_id', teacherId)
+      .order('full_name');
+
+    if (error) throw error;
+
+    // להתאים את הפלט לשדה class_name כמו שהיה קודם
+    const formatted = data.map(st => ({
+      ...st,
+      class_name: st.class ? st.class.name : null
+    }));
+
+    res.json(formatted);
+  } catch (err) {
+    console.error('שגיאה בשליפת תלמידות לפי מורה:', err.message);
+    res.status(500).send('שגיאה בשרת');
+  }
+});
+
+
 // GET students by class ID (קודם - כדי לא ליפול על /:id)
 router.get('/by-class/:classId', async (req, res) => {
   const { classId } = req.params;
