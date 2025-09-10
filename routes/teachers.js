@@ -18,18 +18,61 @@ router.get('/', async (req, res) => {
   }
 });
 
+
 // GET summary of teachers
 router.get('/summary', async (req, res) => {
   try {
-    const { data, error } = await supabase.rpc('teachers_summary');
-    // כאן אפשר ליצור פונקציה ב־PostgreSQL בשם teachers_summary שמחזירה את הסיכומים
-    if (error) throw error;
-    res.json(data);
+    // שולפים את כל המורות עם המידע שלהן
+    const { data: teachers, error: teachersError } = await supabase
+      .from('teachers')
+      .select('id, full_name, position, teaching_hours, subjects');
+
+    if (teachersError) throw teachersError;
+
+    // שולפים קשרי שיבוץ (schedules) עם תלמידות
+    const { data: schedules, error: schedulesError } = await supabase
+      .from('schedules')
+      .select('teacher_id, student_id');
+
+    if (schedulesError) throw schedulesError;
+
+    // שולפים תלמידות עם קשיים
+    const { data: students, error: studentsError } = await supabase
+      .from('students')
+      .select('id, difficulties');
+
+    if (studentsError) throw studentsError;
+
+    // בונים סיכום לכל מורה
+    const summary = teachers.map(t => {
+      // כל השיבוצים של המורה
+      const teacherSchedules = schedules.filter(s => s.teacher_id === t.id);
+
+      // כל התלמידות המשויכות אליה
+      const teacherStudents = teacherSchedules
+        .map(s => students.find(st => st.id === s.student_id))
+        .filter(Boolean);
+
+      return {
+        id: t.id,
+        full_name: t.full_name,
+        position: t.position,
+        teaching_hours: t.teaching_hours,
+        subjects: t.subjects,
+        total_students: teacherStudents.length,
+        ricuz: teacherStudents.filter(st => st.difficulties?.includes('ריכוז')).length,
+        siyua: teacherStudents.filter(st => st.difficulties?.includes('סיוע')).length,
+      };
+    });
+
+    res.json(summary);
   } catch (err) {
     console.error('שגיאה בשליפת סיכום מורות:', err.message);
     res.status(500).send('שגיאה בשרת');
   }
 });
+
+
 
 // POST create teacher
 router.post('/', async (req, res) => {
